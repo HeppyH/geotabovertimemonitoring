@@ -1,28 +1,29 @@
-/**
- * Geotab integration boundary.
- *
- * This MVP intentionally does not contain credentials or a fake API implementation.
- * Implement the methods below using the official MyGeotab Add-In API context and
- * the supported Geotab API SDK for the target MyGeotab environment.
- *
- * Before enabling live calls, verify API entity names/properties, Add-In lifecycle,
- * permissions, and Trip/DriverChange availability against current Geotab docs.
- */
-export interface GeotabContext {
-  api: unknown;
-  database: string;
-  server: string;
-  userName: string;
-}
+import { initializeAddinLifecycle, onAddinReady, getAddinApi, getAddinCredentials, isAddinInitialized, isRunningInMyGeotab } from './addin';
+export { initializeAddinLifecycle, onAddinReady, getAddinApi, getAddinCredentials, isAddinInitialized, isRunningInMyGeotab } from './addin';
+export { createApiClient, withRetry, type TypedApiClient } from './api';
+export { useAddinApi, AddinApiProvider } from './useAddinApi';
+export { useDevices, useDrivers, useTrips, useVehicleSummaries, useDashboardMetrics, useTripDetails, useWorkTime, useWorkTimeDetails } from './hooks';
+export { usePreferences } from './usePreferences';
+export { createPreferencesStore, type UserPreferences, DEFAULT_PREFERENCES } from './preferences';
+export type { Device, Trip, User, DriverChange, WorkTime, WorkTimeDetail, AddInData, TripSearch, DeviceSearch, UserSearch, DriverChangeSearch, GeotabId, GeotabApi, GeotabCredentials } from './entities';
+export type { OvertimeRules, VehicleOvertimeSummary } from '../overtime/engine';
+export { calculateOvertimeSummary, calculateDashboardMetrics, msToHours, formatDuration, DEFAULT_OVERTIME_RULES } from '../overtime/engine';
+
 export interface GeotabConnectionState {
   connected: boolean;
   database?: string;
+  userName?: string;
   message: string;
 }
+
 export async function getConnectionState(): Promise<GeotabConnectionState> {
-  const geotab = (window as Window & { geotab?: unknown }).geotab;
-  if (!geotab) {
+  const inMyGeotab = isRunningInMyGeotab();
+  if (!inMyGeotab) {
     return { connected: false, message: 'Standalone preview. Open this app through a registered MyGeotab Add-In to connect.' };
   }
-  return { connected: false, message: 'MyGeotab runtime detected. Complete the official Add-In authentication adapter before enabling live data.' };
+  const creds = getAddinCredentials();
+  if (creds) {
+    return { connected: true, database: creds.database, userName: creds.userName, message: 'Connected to MyGeotab' };
+  }
+  return { connected: false, message: 'MyGeotab runtime detected. Initializing Add-In...' };
 }

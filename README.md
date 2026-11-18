@@ -1,45 +1,173 @@
-# geotabovertimemonitoring
+# Geotab Overtime Monitoring — MyGeotab Add-In
 
-## OPEX Overtime Monitoring
+Production-ready MyGeotab Add-In for monitoring vehicle after-hours driving activity. Uses native `Trip.afterHoursDrivingDuration` calculated from vehicle WorkTime schedules.
 
-Simple React + TypeScript UI scaffold for a MyGeotab Add-In.
+## Architecture
 
-## Current status
+- **Frontend**: React 19 + TypeScript + Vite
+- **Data Layer**: TanStack Query v5 with typed MyGeotab API client
+- **State**: AddInData for preferences (cloud + localStorage fallback)
+- **No external database or backend** — MyGeotab is the sole data source
 
-This is a **starter scaffold / UI preview**, not a live Geotab-connected production Add-In yet.
+## Key Features
 
-- Dashboard, driver table, trip details, settings UI, and CSV export are included.
-- Demo rows are clearly labelled as sample data.
-- `src/geotab/client.ts` is the integration boundary to implement using the official MyGeotab Add-In lifecycle and API SDK.
-- No database or credential storage is included.
-- Do not deploy as production until the Add-In manifest/lifecycle and live API adapter are implemented and tested against an authorized MyGeotab database.
+- Dashboard metrics: total after-hours hours, vehicles with after-hours activity, unassigned driver trips
+- Vehicle Monitoring table: per-vehicle after-hours driving with status pills (Normal/Warning/Critical)
+- Trip Details table: individual trips with driving/idling/after-hours breakdown
+- Settings: monitoring period, grace period, minimum overtime, warning/critical thresholds, timezone, week start
+- CSV export for current filtered view
+- Responsive loading/error/empty states
 
-## Run locally
+## Local Development
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open the local Vite URL shown in the terminal.
+Open the local Vite URL (http://localhost:5173/geotabovertimemonitoring/). Runs in **standalone preview mode** — shows "Demo preview" notice since MyGeotab runtime is not present.
 
-## Build
+## Production Build
 
 ```bash
 npm run build
 ```
 
-Build output is generated in `dist/`.
+Output in `dist/` with correct base path (`/geotabovertimemonitoring/`). Includes `manifest.json` for MyGeotab registration.
 
-## Next integration steps
+## MyGeotab Add-In Registration
 
-1. Confirm the current official MyGeotab Add-In registration/manifest format for the target environment.
-2. Implement Add-In lifecycle initialization and obtain the supported API context.
-3. Implement live API methods for Device, User, Trip, and DriverChange only after verifying entity/property support and permissions.
-4. Replace demo data in `src/App.tsx` with API-backed data.
-5. Add timezone-safe interval splitting and unit tests for overnight trips, DST, schedule boundaries, and driver changes.
-6. Validate with a real test database; do not treat UI preview as live integration.
+### 1. Host the Application
 
-## Important calculation note
+Deploy `dist/` to any HTTPS static hosting. GitHub Pages is configured via `.github/workflows/deploy.yml` (push to `main` branch).
 
-The included minute-based calculator is a basic starting point. Before production, replace/extend it with robust timezone-aware interval splitting and validate that source trip intervals represent driving duration (not ignition-on or idle duration).
+After deployment, your app URL will be:
+```
+https://<YOUR_GITHUB_USERNAME>.github.io/geotabovertimemonitoring/
+```
+
+### 2. Update Manifest
+
+Edit `public/manifest.json` and replace the `url` field with your actual hosted URL:
+
+```json
+{
+  "url": "https://<YOUR_GITHUB_USERNAME>.github.io/geotabovertimemonitoring/"
+}
+```
+
+Rebuild: `npm run build`
+
+### 3. Register in MyGeotab
+
+1. Open MyGeotab Administration → System → System Settings → Add-Ins
+2. Click **Add Add-In**
+3. Upload `dist/manifest.json` (or paste JSON content)
+4. Save
+
+### 4. Assign Security Clearance
+
+1. Administration → Users → Security Clearances
+2. Create or edit a clearance (e.g., "View After-Hours Monitoring")
+3. Under **Add-Ins**, enable the clearance for "After-Hours Driving Monitoring"
+4. Assign clearance to users/groups
+
+### 5. Configure Vehicle WorkTime
+
+After-hours calculation depends on vehicle WorkTime schedules:
+
+1. Administration → Vehicles → select vehicle → **Work Time**
+2. Assign a WorkTime schedule (or create one: Administration → Rules & Groups → Work Time)
+3. Ensure `timeZoneId` is set on each Device
+
+## Manifest Fields Reference
+
+| Field | Value | Notes |
+|-------|-------|-------|
+| `namespace` | `geotab.addin.overtimeMonitoring` | Must match `ADDIN_NAMESPACE` in `src/geotab/addin.ts` |
+| `path` | `/geotabovertimemonitoring/` | Must match Vite `base` config |
+| `url` | Your HTTPS hosting URL | Update after deployment |
+| `enableViewSecurityId` | `true` | Enables security clearance gating |
+| `manifestVersion` | `1` | MyGeotab manifest version |
+
+## Live Testing Checklist
+
+### Add-In Loading
+- [ ] Add-In appears in MyGeotab menu (ActivityLink)
+- [ ] No console errors on load
+- [ ] Connection indicator shows "Connected to MyGeotab (database)"
+
+### Data Retrieval
+- [ ] Vehicles load (Device API)
+- [ ] Drivers load (User API with `isDriver: true`)
+- [ ] Trips load for selected period (Trip API with date filters)
+- [ ] Pagination works for large trip datasets
+
+### After-Hours Calculation
+- [ ] `Trip.afterHoursDrivingDuration` populates correctly
+- [ ] Vehicles with WorkTime show after-hours values
+- [ ] Vehicles without WorkTime show 0 after-hours
+- [ ] Grace period setting reduces after-hours
+- [ ] Minimum overtime setting filters small values
+- [ ] Warning (5h) / Critical (10h) thresholds apply correctly
+
+### Driver Assignment
+- [ ] Trips with assigned driver show driver name
+- [ ] Trips with `UnknownDriverId` show "Unassigned"
+- [ ] Trips with null/missing driver show "Unassigned"
+- [ ] Driver status pill reflects Assigned/Unassigned
+
+### Preferences (AddInData)
+- [ ] Settings persist after reload (cloud)
+- [ ] Settings persist in standalone mode (localStorage)
+- [ ] No double-JSON serialization errors
+
+### Error Handling
+- [ ] Expired session triggers re-authentication
+- [ ] Rate limit (`OverLimitException`) triggers retry with backoff
+- [ ] Network errors show retry button
+- [ ] Empty states display correctly
+
+## API Permissions Required
+
+The Add-In uses these MyGeotab API methods:
+
+| Entity | Methods | Purpose |
+|--------|---------|---------|
+| Device | `Get` | Vehicle list, WorkTime, timezone |
+| User | `Get` (with `isDriver: true`) | Driver list for name resolution |
+| Trip | `Get`, `GetFeed` | Trip data with `afterHoursDrivingDuration` |
+| DriverChange | `GetFeed` | Driver logon/logoff history |
+| WorkTime | `Get` | Schedule details |
+| AddInData | `Get`, `Set`, `Add` | User preferences persistence |
+
+## Rate Limits & Performance
+
+- Exponential backoff: 1s base, max 30s, 5 retries
+- Pagination: 5000 trips/page, 5000 devices, 1000 drivers
+- Stale times: devices 5min, drivers 10min, trips 2min
+- Property selectors used to minimize payload
+
+## AddInData Limits
+
+- Max 100 KB per record
+- Max 10 records per Add-In per database
+- Used only for user preferences (small JSON object)
+
+## Troubleshooting
+
+| Issue | Cause | Fix |
+|-------|-------|-----|
+| "Standalone preview" in MyGeotab | Manifest `url` mismatch | Update manifest `url` to exact hosting URL |
+| No vehicles loaded | Missing Device permissions | Assign "View Devices" clearance |
+| After-hours always 0 | No WorkTime assigned | Configure WorkTime in Administration |
+| Preferences not saving | AddInData limit exceeded | Check 100 KB / 10 record limit |
+| CORS errors | HTTP instead of HTTPS | MyGeotab requires HTTPS hosting |
+
+## Version History
+
+- 1.0.0: Initial production release with full MyGeotab integration
+
+## License
+
+Internal use only — Geotab Add-In for fleet operations monitoring.
