@@ -1,16 +1,27 @@
-import { useState, useMemo, useCallback, useEffect } from 'react';
-import { Activity, Clock3, CarFront, Users, RefreshCw, Download, Settings2, PlugZap, AlertTriangle, CheckCircle, XCircle, Loader2, Filter, ChevronDown } from 'lucide-react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { Activity, Clock3, CarFront, Users, RefreshCw, Download, Settings2, PlugZap, AlertTriangle, CheckCircle, XCircle, Loader2, Filter, ChevronDown, Calendar, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { getConnectionState, useVehicleSummaries, useDashboardMetrics, useTripDetails, usePreferences, DEFAULT_PREFERENCES, formatDuration } from './geotab/client';
 import type { VehicleOvertimeSummary } from './types';
 import type { GeotabConnectionState } from './geotab/client';
+import { startOfMonth, endOfMonth, addMonths, subMonths, startOfWeek, endOfWeek, addDays, subDays, isSameDay, isSameMonth, isSameYear, format, parseISO } from 'date-fns';
+import { toZonedTime } from 'date-fns-tz';
 
 const PERIOD_OPTIONS = [
   { value: 'today', label: 'Today' },
-  { value: 'week', label: 'This Week' },
-  { value: 'month', label: 'This Month' },
+  { value: 'yesterday', label: 'Yesterday' },
+  { value: 'thisWeek', label: 'This Week' },
+  { value: 'lastWeek', label: 'Last Week' },
+  { value: 'thisMonth', label: 'This Month' },
+  { value: 'lastMonth', label: 'Last Month' },
+  { value: 'past7Days', label: 'Past 7 Days' },
+  { value: 'past14Days', label: 'Past 14 Days' },
+  { value: 'past30Days', label: 'Past 30 Days' },
+  { value: 'thisYear', label: 'This Year' },
+  { value: 'lastYear', label: 'Last Year' },
+  { value: 'custom', label: 'Custom Range' },
 ] as const;
 
-type Period = 'today' | 'week' | 'month';
+type Period = 'today' | 'yesterday' | 'thisWeek' | 'lastWeek' | 'thisMonth' | 'lastMonth' | 'past7Days' | 'past14Days' | 'past30Days' | 'thisYear' | 'lastYear' | 'custom';
 
 interface MetricProps {
   icon: React.ReactNode;
@@ -96,20 +107,214 @@ function ErrorRow({ colSpan, message, onRetry }: ErrorRowProps) {
   );
 }
 
+function getDaysInMonth(date: Date): Date[] {
+  const start = startOfMonth(date);
+  const end = endOfMonth(date);
+  const days: Date[] = [];
+  let current = startOfWeek(start, { weekStartsOn: 1 });
+  while (current <= endOfWeek(end, { weekStartsOn: 1 })) {
+    days.push(current);
+    current = addDays(current, 1);
+  }
+  return days;
+}
+
+interface DateRangePickerProps {
+  period: Period;
+  onPeriodChange: (period: Period) => void;
+  customStartDate?: string;
+  customEndDate?: string;
+  onCustomDateChange: (startDate: string | undefined, endDate: string | undefined) => void;
+  displayTimezone: string;
+}
+
+function DateRangePicker({ period, onPeriodChange, customStartDate, customEndDate, onCustomDateChange, displayTimezone }: DateRangePickerProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [showCalendar, setShowCalendar] = useState(false);
+  const [calendarMonth, setCalendarMonth] = useState(() => toZonedTime(new Date(), displayTimezone));
+  const [tempStartDate, setTempStartDate] = useState<Date | null>(customStartDate ? parseISO(customStartDate) : null);
+  const [tempEndDate, setTempEndDate] = useState<Date | null>(customEndDate ? parseISO(customEndDate) : null);
+  const [selectingStart, setSelectingStart] = useState(true);
+  const pickerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (pickerRef.current && !pickerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+        setShowCalendar(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selectedPeriod = PERIOD_OPTIONS.find(p => p.value === period);
+  const periodLabel = selectedPeriod?.label || 'Select period';
+
+  const handlePeriodSelect = (newPeriod: Period) => {
+    onPeriodChange(newPeriod);
+    if (newPeriod !== 'custom') {
+      onCustomDateChange(undefined, undefined);
+      setShowCalendar(false);
+    } else {
+      setShowCalendar(true);
+    }
+    setIsOpen(false);
+  };
+
+  const handleDateSelect = (date: Date) => {
+    if (selectingStart || !tempStartDate) {
+      setTempStartDate(date);
+      setSelectingStart(false);
+    } else {
+      if (date < tempStartDate) {
+        setTempStartDate(date);
+        setTempEndDate(null);
+      } else {
+        setTempEndDate(date);
+      }
+    }
+  };
+
+  const handleApply = () => {
+    if (tempStartDate) {
+      const startStr = format(tempStartDate, 'yyyy-MM-dd');
+      const endStr = tempEndDate ? format(tempEndDate, 'yyyy-MM-dd') : startStr;
+      onCustomDateChange(startStr, endStr);
+    }
+    setShowCalendar(false);
+    setIsOpen(false);
+  };
+
+  const handleClear = () => {
+    setTempStartDate(null);
+    setTempEndDate(null);
+    setSelectingStart(true);
+    onCustomDateChange(undefined, undefined);
+  };
+
+  const handleCancel = () => {
+    setTempStartDate(customStartDate ? parseISO(customStartDate) : null);
+    setTempEndDate(customEndDate ? parseISO(customEndDate) : null);
+    setSelectingStart(true);
+    setShowCalendar(false);
+    setIsOpen(false);
+  };
+
+  const isDateInRange = (date: Date) => {
+    if (!tempStartDate) return false;
+    if (!tempEndDate) return isSameDay(date, tempStartDate);
+    return date >= tempStartDate && date <= tempEndDate;
+  };
+
+  const isDateSelected = (date: Date) => {
+    if (tempStartDate && isSameDay(date, tempStartDate)) return true;
+    if (tempEndDate && isSameDay(date, tempEndDate)) return true;
+    return false;
+  };
+
+  const isDateHovered = (date: Date) => {
+    if (!tempStartDate || tempEndDate) return false;
+    return date > tempStartDate;
+  };
+
+  const prevMonth = () => setCalendarMonth(subMonths(calendarMonth, 1));
+  const nextMonth = () => setCalendarMonth(addMonths(calendarMonth, 1));
+
+  const days = getDaysInMonth(calendarMonth);
+  const monthLabel = format(calendarMonth, 'MMMM yyyy');
+
+  return (
+    <div className="date-range-picker" ref={pickerRef}>
+      <div className="period-selector" onClick={() => { setShowCalendar(false); setIsOpen(!isOpen); }}>
+        <Calendar size={16} />
+        <span className="period-label">{periodLabel}</span>
+        <ChevronDown size={16} className={isOpen ? 'rotate' : ''} />
+      </div>
+
+      {isOpen && (
+        <div className="period-dropdown">
+          {PERIOD_OPTIONS.map((option) => (
+            <button
+              key={option.value}
+              className={`period-option ${period === option.value ? 'active' : ''}`}
+              onClick={() => handlePeriodSelect(option.value)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {showCalendar && period === 'custom' && (
+        <div className="calendar-popover">
+          <div className="calendar-header">
+            <button className="nav-btn" onClick={prevMonth}><ChevronLeft size={16} /></button>
+            <span className="calendar-month">{monthLabel}</span>
+            <button className="nav-btn" onClick={nextMonth}><ChevronRight size={16} /></button>
+          </div>
+          <div className="calendar-weekdays">
+            {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => (
+              <div key={day} className="weekday">{day}</div>
+            ))}
+          </div>
+          <div className="calendar-days">
+            {days.map((day) => {
+              const isCurrentMonth = isSameMonth(day, calendarMonth);
+              const inRange = isDateInRange(day);
+              const selected = isDateSelected(day);
+              const hovered = isDateHovered(day);
+              const isStart = tempStartDate && isSameDay(day, tempStartDate);
+              const isEnd = tempEndDate && isSameDay(day, tempEndDate);
+
+              return (
+                <button
+                  key={day.toISOString()}
+                  className={`calendar-day ${!isCurrentMonth ? 'outside' : ''} ${inRange ? 'in-range' : ''} ${selected ? 'selected' : ''} ${hovered ? 'hovered' : ''} ${isStart ? 'range-start' : ''} ${isEnd ? 'range-end' : ''}`}
+                  onClick={() => handleDateSelect(day)}
+                  disabled={!isCurrentMonth}
+                  type="button"
+                >
+                  {format(day, 'd')}
+                </button>
+              );
+            })}
+          </div>
+          <div className="calendar-actions">
+            <button className="secondary" onClick={handleClear}>
+              <X size={14} /> Clear
+            </button>
+            <div className="action-buttons">
+              <button className="secondary" onClick={handleCancel}>Cancel</button>
+              <button onClick={handleApply} disabled={!tempStartDate}>Apply</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function App() {
   const [connection, setConnection] = useState<GeotabConnectionState>({ connected: false, message: 'Checking MyGeotab runtime…' });
-  const [period, setPeriod] = useState<Period>('week');
+  const [period, setPeriod] = useState<Period>('today');
   const [query, setQuery] = useState('');
   const [tab, setTab] = useState<'vehicles' | 'trips' | 'settings'>('vehicles');
 
   const { preferences, updatePreferences, isLoaded: prefsLoaded } = usePreferences();
-  const { data: vehicleSummaries, isLoading: vehiclesLoading, error: vehiclesError, refetch: refetchVehicles } = useVehicleSummaries(period);
-  const { data: metrics, isLoading: metricsLoading } = useDashboardMetrics(period);
-  const { data: trips, isLoading: tripsLoading, error: tripsError, refetch: refetchTrips } = useTripDetails(period);
+  const { data: vehicleSummaries, isLoading: vehiclesLoading, error: vehiclesError, refetch: refetchVehicles } = useVehicleSummaries(period, preferences.customStartDate, preferences.customEndDate);
+  const { data: metrics, isLoading: metricsLoading } = useDashboardMetrics(period, preferences.customStartDate, preferences.customEndDate);
+  const { data: trips, isLoading: tripsLoading, error: tripsError, refetch: refetchTrips } = useTripDetails(period, undefined, preferences.customStartDate, preferences.customEndDate);
 
   useEffect(() => {
     getConnectionState().then(setConnection);
   }, []);
+
+  useEffect(() => {
+    if (prefsLoaded && preferences.monitoringPeriod) {
+      setPeriod(preferences.monitoringPeriod);
+    }
+  }, [prefsLoaded, preferences.monitoringPeriod]);
 
   const filteredVehicles = useMemo(() => {
     if (!vehicleSummaries) return [];
@@ -172,6 +377,13 @@ export default function App() {
   const handlePeriodChange = (newPeriod: Period) => {
     setPeriod(newPeriod);
     updatePreferences({ monitoringPeriod: newPeriod });
+    if (newPeriod !== 'custom') {
+      updatePreferences({ customStartDate: undefined, customEndDate: undefined });
+    }
+  };
+
+  const handleCustomDateChange = (startDate: string | undefined, endDate: string | undefined) => {
+    updatePreferences({ customStartDate: startDate, customEndDate: endDate });
   };
 
   const handleRulesChange = (field: keyof typeof DEFAULT_PREFERENCES.overtimeRules, value: number) => {
@@ -206,11 +418,14 @@ export default function App() {
           <p>Monitor vehicle driving activity outside configured working hours.</p>
         </div>
         <div className="actions">
-          <select value={period} onChange={(e) => handlePeriodChange(e.target.value as Period)}>
-            {PERIOD_OPTIONS.map((p) => (
-              <option key={p.value} value={p.value}>{p.label}</option>
-            ))}
-          </select>
+          <DateRangePicker
+            period={period}
+            onPeriodChange={handlePeriodChange}
+            customStartDate={preferences.customStartDate}
+            customEndDate={preferences.customEndDate}
+            onCustomDateChange={handleCustomDateChange}
+            displayTimezone={preferences.displayTimezone}
+          />
           <button className="secondary" onClick={() => { refetchVehicles(); refetchTrips(); getConnectionState().then(setConnection); }}>
             <RefreshCw size={16} /> Refresh
           </button>
@@ -380,9 +595,14 @@ export default function App() {
           <div className="formGrid">
             <label>
               Monitoring Period
-              <select value={period} onChange={(e) => handlePeriodChange(e.target.value as Period)}>
-                {PERIOD_OPTIONS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
-              </select>
+              <DateRangePicker
+                period={period}
+                onPeriodChange={handlePeriodChange}
+                customStartDate={preferences.customStartDate}
+                customEndDate={preferences.customEndDate}
+                onCustomDateChange={handleCustomDateChange}
+                displayTimezone={preferences.displayTimezone}
+              />
             </label>
 
             <label>

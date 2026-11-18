@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAddinApi } from './useAddinApi';
 import type { Device, Trip, User, WorkTime, WorkTimeDetail, TripSearch, GeotabId } from './entities';
-import { startOfDay, endOfDay, format, parseISO } from 'date-fns';
+import { startOfDay, endOfDay, format, parseISO, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear, addDays, subMonths, subYears } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
 
 const UNKNOWN_DRIVER_ID = 'UnknownDriverId';
@@ -62,7 +62,7 @@ function resolveDriverName(trip: Trip, drivers: Map<string, User>): { name: stri
   return { name: 'Unassigned', status: 'Unassigned' };
 }
 
-function getDateRangeForPeriod(period: string, timezone: string): { from: Date; to: Date } {
+function getDateRangeForPeriod(period: string, timezone: string, customStartDate?: string, customEndDate?: string): { from: Date; to: Date } {
   const now = toZonedTime(new Date(), timezone);
   let from: Date;
   let to: Date = endOfDay(now);
@@ -71,17 +71,54 @@ function getDateRangeForPeriod(period: string, timezone: string): { from: Date; 
     case 'today':
       from = startOfDay(now);
       break;
-    case 'week':
-      from = startOfDay(now);
-      from.setDate(from.getDate() - 6);
+    case 'yesterday':
+      from = startOfDay(subDays(now, 1));
+      to = endOfDay(subDays(now, 1));
       break;
-    case 'month':
-      from = startOfDay(now);
-      from.setDate(1);
+    case 'thisWeek':
+      from = startOfWeek(now, { weekStartsOn: 1 });
+      break;
+    case 'lastWeek':
+      from = startOfWeek(subDays(now, 7), { weekStartsOn: 1 });
+      to = endOfWeek(subDays(now, 7), { weekStartsOn: 1 });
+      break;
+    case 'thisMonth':
+      from = startOfMonth(now);
+      break;
+    case 'lastMonth':
+      from = startOfMonth(subMonths(now, 1));
+      to = endOfMonth(subMonths(now, 1));
+      break;
+    case 'past7Days':
+      from = startOfDay(subDays(now, 6));
+      break;
+    case 'past14Days':
+      from = startOfDay(subDays(now, 13));
+      break;
+    case 'past30Days':
+      from = startOfDay(subDays(now, 29));
+      break;
+    case 'thisYear':
+      from = startOfYear(now);
+      break;
+    case 'lastYear':
+      from = startOfYear(subYears(now, 1));
+      to = endOfYear(subYears(now, 1));
+      break;
+    case 'custom':
+      if (customStartDate) {
+        from = startOfDay(parseISO(customStartDate));
+      } else {
+        from = startOfDay(now);
+      }
+      if (customEndDate) {
+        to = endOfDay(parseISO(customEndDate));
+      } else {
+        to = endOfDay(now);
+      }
       break;
     default:
       from = startOfDay(now);
-      from.setDate(from.getDate() - 6);
   }
 
   return { from, to };
@@ -144,7 +181,7 @@ export function useWorkTimeDetails(workTime: WorkTime | null) {
   });
 }
 
-export function useTrips(period: string = 'week', deviceIds?: string[]) {
+export function useTrips(period: string = 'week', deviceIds?: string[], customStartDate?: string, customEndDate?: string) {
   const { apiClient } = useAddinApi();
   const { data: devices } = useDevices();
   const { data: drivers } = useDrivers();
@@ -153,13 +190,13 @@ export function useTrips(period: string = 'week', deviceIds?: string[]) {
   drivers?.forEach((d) => driverMap.set(d.id, d));
 
   return useQuery({
-    queryKey: ['trips', period, deviceIds?.join(',')],
+    queryKey: ['trips', period, deviceIds?.join(','), customStartDate, customEndDate],
     queryFn: async (): Promise<TripWithMeta[]> => {
       if (!apiClient) throw new Error('API client not initialized');
       if (!devices || devices.length === 0) return [];
 
       const timezone = devices[0]?.timeZoneId || 'UTC';
-      const { from, to } = getDateRangeForPeriod(period, timezone);
+      const { from, to } = getDateRangeForPeriod(period, timezone, customStartDate, customEndDate);
 
       const deviceFilter = deviceIds?.length ? deviceIds : devices.map((d) => d.id);
 
@@ -200,8 +237,8 @@ export function useTrips(period: string = 'week', deviceIds?: string[]) {
   });
 }
 
-export function useVehicleSummaries(period: string = 'week') {
-  const { data: trips, isLoading, error, refetch } = useTrips(period);
+export function useVehicleSummaries(period: string = 'week', customStartDate?: string, customEndDate?: string) {
+  const { data: trips, isLoading, error, refetch } = useTrips(period, undefined, customStartDate, customEndDate);
 
   const summaries = trips?.reduce((acc: Map<string, VehicleSummary>, trip) => {
     const deviceId = trip.device?.id || 'unknown';
@@ -244,9 +281,9 @@ export function useVehicleSummaries(period: string = 'week') {
   return { data: result, isLoading, error, refetch };
 }
 
-export function useDashboardMetrics(period: string = 'week'): { data: DashboardMetrics; isLoading: boolean } {
+export function useDashboardMetrics(period: string = 'week', customStartDate?: string, customEndDate?: string): { data: DashboardMetrics; isLoading: boolean } {
   const { data: vehicles } = useDevices();
-  const { data: trips, isLoading } = useTrips(period);
+  const { data: trips, isLoading } = useTrips(period, undefined, customStartDate, customEndDate);
 
   if (!trips || trips.length === 0) {
     return {
@@ -285,8 +322,8 @@ export function useDashboardMetrics(period: string = 'week'): { data: DashboardM
   };
 }
 
-export function useTripDetails(period: string = 'week', deviceIds?: string[]) {
-  const { data: trips, isLoading, error, refetch } = useTrips(period, deviceIds);
+export function useTripDetails(period: string = 'week', deviceIds?: string[], customStartDate?: string, customEndDate?: string) {
+  const { data: trips, isLoading, error, refetch } = useTrips(period, deviceIds, customStartDate, customEndDate);
 
   return {
     data: trips?.map((trip) => ({

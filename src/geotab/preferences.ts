@@ -4,7 +4,9 @@ const ADDIN_ID = 'a2C4ABQuLFkepPVf6-4OKAQ'; // Base64 encoded GUID for this Add-
 const STORAGE_KEY = 'geotab-overtime-preferences';
 
 export interface UserPreferences {
-  monitoringPeriod: 'today' | 'week' | 'month';
+  monitoringPeriod: 'today' | 'yesterday' | 'thisWeek' | 'lastWeek' | 'thisMonth' | 'lastMonth' | 'past7Days' | 'past14Days' | 'past30Days' | 'thisYear' | 'lastYear' | 'custom';
+  customStartDate?: string;
+  customEndDate?: string;
   overtimeRules: {
     gracePeriodMinutes: number;
     minimumOvertimeMinutes: number;
@@ -16,7 +18,9 @@ export interface UserPreferences {
 }
 
 export const DEFAULT_PREFERENCES: UserPreferences = {
-  monitoringPeriod: 'week',
+  monitoringPeriod: 'today',
+  customStartDate: undefined,
+  customEndDate: undefined,
   overtimeRules: {
     gracePeriodMinutes: 0,
     minimumOvertimeMinutes: 0,
