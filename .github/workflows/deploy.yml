@@ -1,5 +1,4 @@
-
-name: Deploy Overtime Monitoring
+name: Deploy OPEX Overtime Monitoring
 
 on:
   push:
@@ -8,8 +7,6 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: pages
@@ -19,19 +16,27 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
         with:
           node-version: 22
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
+
+      - name: Validate TypeScript
+        run: npx tsc --noEmit
 
       - name: Build Vite application
         run: npm run build
 
-      - name: Upload build
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload dist artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: ./dist
@@ -42,6 +47,10 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      pages: write
+      id-token: write
     steps:
-      - id: deployment
+      - name: Deploy to GitHub Pages
+        id: deployment
         uses: actions/deploy-pages@v4
