@@ -48,11 +48,12 @@ https://<YOUR_GITHUB_USERNAME>.github.io/geotabovertimemonitoring/
 
 ### 2. Update Manifest
 
-Edit `public/manifest.json` and replace the `url` field with your actual hosted URL:
+Edit `public/manifest.json` and point `url` at the hosted page, keeping `path` as the MyGeotab menu identifier:
 
 ```json
 {
-  "url": "https://<YOUR_GITHUB_USERNAME>.github.io/geotabovertimemonitoring/"
+  "url": "https://<YOUR_GITHUB_USERNAME>.github.io/geotabovertimemonitoring/index.html",
+  "path": "GeotabOvertimeMonitoringLink"
 }
 ```
 
@@ -85,8 +86,8 @@ After-hours calculation depends on vehicle WorkTime schedules:
 | Field | Value | Notes |
 |-------|-------|-------|
 | `namespace` | `geotab.addin.overtimeMonitoring` | Must match `ADDIN_NAMESPACE` in `src/geotab/addin.ts` |
-| `path` | `/geotabovertimemonitoring/` | Must match Vite `base` config |
-| `url` | Your HTTPS hosting URL | Update after deployment |
+| `path` | `GeotabOvertimeMonitoringLink` | MyGeotab menu identifier where the Add-In is listed. Never put a repository or URL path here |
+| `url` | `https://heppyh.github.io/geotabovertimemonitoring/index.html` | Absolute URL of the Add-In page; the repository name must appear exactly once |
 | `enableViewSecurityId` | `true` | Enables security clearance gating |
 | `manifestVersion` | `1` | MyGeotab manifest version |
 

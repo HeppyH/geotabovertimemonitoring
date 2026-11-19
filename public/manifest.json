@@ -2,12 +2,13 @@
   "name": "After-Hours Driving Monitoring",
   "version": "1.0.0",
   "namespace": "geotab.addin.overtimeMonitoring",
-  "path": "/geotabovertimemonitoring/",
-  "url": "https://heppyh.github.io/geotabovertimemonitoring/",
   "manifestVersion": 1,
   "isMultiGroup": false,
   "enableViewSecurityId": true,
   "supportedLocales": ["en"],
   "requiredServices": [],
-  "description": "Monitor vehicle driving activity outside configured working hours using native MyGeotab Trip.afterHoursDrivingDuration"
-,\"supportEmail\": \"heppy@opexcg.com\"}
+  "description": "Monitor vehicle driving activity outside configured working hours using native MyGeotab Trip.afterHoursDrivingDuration",
+  "url": "https://heppyh.github.io/geotabovertimemonitoring/index.html",
+  "path": "GeotabOvertimeMonitoringLink",
+  "supportEmail": "heppy@opexcg.com"
+}
