@@ -10,4 +10,4 @@
   "supportedLocales": ["en"],
   "requiredServices": [],
   "description": "Monitor vehicle driving activity outside configured working hours using native MyGeotab Trip.afterHoursDrivingDuration"
-}
+,\"supportEmail\": \"heppy@opexcg.com\"}
