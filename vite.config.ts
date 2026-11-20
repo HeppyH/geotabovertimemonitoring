@@ -6,7 +6,10 @@ import { fileURLToPath } from 'url';
 
 const __dirname = resolve(fileURLToPath(import.meta.url), '..');
 
-export default defineConfig({
+const REPO_PATH = '/geotabovertimemonitoring/';
+const PRODUCTION_ORIGIN = 'https://heppyh.github.io';
+
+export default defineConfig(({ command }) => ({
   plugins: [
     react(),
     {
@@ -19,5 +22,5 @@ export default defineConfig({
       },
     },
   ],
-  base: '/geotabovertimemonitoring/',
-});
+  base: command === 'build' ? `${PRODUCTION_ORIGIN}${REPO_PATH}` : REPO_PATH,
+}));
